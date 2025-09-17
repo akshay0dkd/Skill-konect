@@ -3,11 +3,18 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../redux/store';
 import { logout } from '../redux/features/auth/authSlice';
+import { getTasksForUser } from '../services/api';
+
+interface Task {
+  id: string;
+  status: string;
+}
 
 const Navbar: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
-  const { isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const { user, isAuthenticated } = useSelector((state: RootState) => state.auth);
+  const [pendingTasksCount, setPendingTasksCount] = useState(0);
   const dispatch: AppDispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -19,6 +26,17 @@ const Navbar: React.FC = () => {
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (user?.uid) {
+      const fetchTasks = async () => {
+        const userTasks = await getTasksForUser(user.uid);
+        const pendingTasks = userTasks.filter((task: Task) => task.status === 'pending');
+        setPendingTasksCount(pendingTasks.length);
+      };
+      fetchTasks();
+    }
+  }, [user]);
 
   const toggleTheme = () => {
     setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
@@ -44,7 +62,14 @@ const Navbar: React.FC = () => {
             <Link to="/requests" className="text-gray-300 hover:text-white">Requests</Link>
             <Link to="/messages" className="text-gray-300 hover:text-white">Messages</Link>
             <Link to="/profile" className="text-gray-300 hover:text-white">Profile</Link>
-            <Link to="/tasks" className="text-gray-300 hover:text-white">Tasks</Link>
+            <Link to="/tasks" className="text-gray-300 hover:text-white flex items-center gap-2">
+              Tasks
+              {pendingTasksCount > 0 && (
+                <span className="bg-red-500 text-white text-xs font-semibold rounded-full px-2 py-1">
+                  {pendingTasksCount}
+                </span>
+              )}
+            </Link>
             {isAuthenticated ? (
               <button onClick={handleLogout} className="text-gray-300 hover:text-white">Logout</button>
             ) : (

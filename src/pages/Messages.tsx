@@ -81,17 +81,17 @@ const Messages: React.FC = () => {
     }
   };
 
-  const handleCreateTask = async (taskDescription: string) => {
+  const handleCreateTask = async (taskName: string, taskDescription: string) => {
     if (!selectedConversation || !currentUser) return;
 
     const otherParticipantId = selectedConversation.participants.find(p => p !== currentUser.uid);
     if (!otherParticipantId) return;
 
     try {
-      await createTask(currentUser.uid, otherParticipantId, taskDescription, selectedConversation.id);
+      await createTask(currentUser.uid, otherParticipantId, taskName, taskDescription, selectedConversation.id);
       setIsModalOpen(false);
       // Optionally, send a message confirming the task was created
-      await sendMessage(selectedConversation.id, currentUser.uid, `I have created a new task for you: "${taskDescription}"`);
+      await sendMessage(selectedConversation.id, currentUser.uid, `I have created a new task for you: "${taskName}"`);
     } catch (error) {
       console.error('Error creating task:', error);
     }
@@ -136,7 +136,7 @@ const Messages: React.FC = () => {
                     <p className="font-semibold text-text-primary dark:text-white">{convo.otherUserName}</p>
                     {convo.lastMessageTimestamp && <p className="text-xs text-text-secondary dark:text-gray-400">{new Date(convo.lastMessageTimestamp?.toDate()).toLocaleTimeString()}</p>}
                   </div>
-                  <p className="text-sm text-text-secondary dark:text-gray-400 truncate">{convo.lastMessage}</p>
+                  <p className="text-sm text-text-secondary dark:text-gray-400 truncate overflow-hidden whitespace-nowrap">{convo.lastMessage}</p>
                 </div>
               </div>
             </div>
@@ -162,7 +162,7 @@ const Messages: React.FC = () => {
               {messages.map(msg => (
                 <div key={msg.id} className={`flex ${msg.senderId === currentUser?.uid ? 'justify-end' : 'justify-start'} mb-4`}>
                   <div className={`max-w-xs px-4 py-2 rounded-lg ${msg.senderId === currentUser?.uid ? 'bg-primary text-white' : 'bg-white dark:bg-gray-700 text-text-primary dark:text-white'}`}>
-                    <p className="text-sm">{msg.text}</p>
+                    <p className="text-sm break-words">{msg.text}</p>
                     {msg.timestamp && <p className={`text-xs mt-1 ${msg.senderId === currentUser?.uid ? 'text-gray-300' : 'text-text-secondary dark:text-gray-400'}`}>{new Date(msg.timestamp?.toDate()).toLocaleTimeString()}</p>}
                   </div>
                 </div>

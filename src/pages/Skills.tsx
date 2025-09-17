@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../redux/store';
 import { getUsersBySkill, getSkills, sendMentorshipRequest } from '../services/api';
-import { User } from 'firebase/auth';
+import { Link } from 'react-router-dom';
 
 interface UserProfile {
   uid: string;
@@ -14,6 +14,8 @@ interface UserProfile {
   skills: string[];
   location: string;
   availability: string;
+  rating?: number;
+  ratingCount?: number;
 }
 
 interface Skill {
@@ -103,11 +105,23 @@ const Skills: React.FC = () => {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8">
           {users.map(user => (
-            <div key={user.uid} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 flex flex-col justify-between">
+            <Link to={`/profile/${user.uid}`} key={user.uid} className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 flex flex-col justify-between no-underline">
               <div>
                 <img src={user.photoURL || 'https://via.placeholder.com/150'} alt={user.displayName} className="w-32 h-32 rounded-full mx-auto mb-4" />
                 <h2 className="text-xl font-bold text-center text-gray-800 dark:text-white">{user.displayName}</h2>
-                <p className="text-center text-gray-600 dark:text-gray-400">{user.title}</p>
+                <div className="flex items-center justify-center mt-2">
+                  {[...Array(5)].map((_, i) => (
+                    <svg key={i} className={`w-4 h-4 ${i < Math.round(user.rating || 0) ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`} fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
+                    </svg>
+                  ))}
+                  {user.rating != null && (
+                    <span className="ml-2 text-sm text-gray-600 dark:text-gray-300 font-semibold">
+                      {(user.rating || 0).toFixed(1)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-center text-gray-600 dark:text-gray-400 mt-1">{user.title}</p>
                 <div className="mt-4">
                     <h3 className="font-semibold text-gray-700 dark:text-gray-300">Skills:</h3>
                     <div className="flex flex-wrap gap-2 mt-2">
@@ -119,13 +133,17 @@ const Skills: React.FC = () => {
               </div>
               <div className="mt-6">
                 <button 
-                  onClick={() => setSkillSelectionUser(user)}
+                  onClick={(e) => {
+                    e.preventDefault(); 
+                    e.stopPropagation();
+                    setSkillSelectionUser(user)
+                  }}
                   className="w-full bg-primary hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition duration-300"
                 >
                   Connect Me
                 </button>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </div>

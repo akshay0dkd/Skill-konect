@@ -2,7 +2,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  updateProfile,
+  updateProfile as updateFirebaseProfile,
   User
 } from 'firebase/auth';
 import { auth, db } from '../firebase';
@@ -19,7 +19,8 @@ import {
   where,
   arrayUnion,
   arrayRemove,
-  orderBy
+  orderBy,
+  runTransaction
 } from 'firebase/firestore';
 
 // Login function
@@ -41,7 +42,7 @@ export const registerUser = async (email: string, password: string, displayName:
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
-    await updateProfile(user, { displayName });
+    await updateFirebaseProfile(user, { displayName });
     await ensureUserDocument(user);
     return user;
   } catch (error) {
@@ -304,6 +305,22 @@ export const updateUserProfile = async (userId: string, updates: Partial<{
   }
 };
 
+export const updateUserPhotoURL = async (userId: string, photoURL: string) => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await updateDoc(userRef, { photoURL });
+
+    if (auth.currentUser && auth.currentUser.uid === userId) {
+        await updateFirebaseProfile(auth.currentUser, { photoURL });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error updating user photo URL:', error);
+    throw error;
+  }
+};
+
 // Add a skill to user profile
 export const addUserSkill = async (userId: string, skill: string) => {
   try {
@@ -351,18 +368,19 @@ export const getConnections = async (userId: string) => {
     }
 };
 
-export const createTask = async (assignedBy: string, assignedTo: string, task: string, conversationId: string) => {
+export const createTask = async (assignedBy: string, assignedTo: string, taskName: string, taskDescription: string, conversationId: string) => {
     await addDoc(collection(db, 'tasks'), {
         assignedBy,
         assignedTo,
-        task,
+        taskName,
+        taskDescription,
         conversationId,
         status: 'pending',
         createdAt: serverTimestamp(),
     });
 };
 
-export const getTasks = async (userId: string) => {
+export const getTasksForUser = async (userId: string) => {
     const tasksRef = collection(db, 'tasks');
     const q = query(tasksRef, where('assignedTo', '==', userId));
     const querySnapshot = await getDocs(q);
@@ -374,4 +392,42 @@ export const updateTaskStatus = async (taskId: string, status: string) => {
     await updateDoc(taskRef, {
         status,
     });
+};
+
+export const addReview = async (reviewerId: string, revieweeId: string, rating: number, comment: string) => {
+  const revieweeRef = doc(db, 'users', revieweeId);
+  const reviewRef = doc(collection(db, 'users', revieweeId, 'reviews'));
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const revieweeDoc = await transaction.get(revieweeRef);
+      if (!revieweeDoc.exists()) {
+        throw "User document does not exist!";
+      }
+
+      // 1. Update user's rating
+      const userData = revieweeDoc.data();
+      const currentRating = userData.rating || 0;
+      const ratingCount = userData.ratingCount || 0;
+
+      const newRatingCount = ratingCount + 1;
+      const newAverageRating = ((currentRating * ratingCount) + rating) / newRatingCount;
+
+      transaction.update(revieweeRef, {
+        rating: newAverageRating,
+        ratingCount: newRatingCount
+      });
+
+      // 2. Create the new review document
+      transaction.set(reviewRef, {
+        reviewerId,
+        rating,
+        comment,
+        createdAt: serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    console.error("Error adding review: ", error);
+    throw error;
+  }
 };

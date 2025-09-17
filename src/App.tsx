@@ -18,6 +18,7 @@ import ActivityLog from "./pages/ActivityLog";
 import AllSessions from "./pages/AllSessions";
 import FinishLogin from "./pages/FinishLogin";
 import ProtectedRoute from "./components/ProtectedRoute";
+import ProfilePage from "./pages/ProfilePage";
 
 const App: React.FC = () => {
   const isDarkMode = useSelector((state: RootState) => state.theme.isDarkMode);
@@ -44,6 +45,7 @@ const App: React.FC = () => {
             <Route path="/requests" element={<Requests />} />
             <Route path="/messages" element={<Messages />} />
             <Route path="/profile" element={<Profile />} />
+            <Route path="/profile/:userId" element={<ProfilePage />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/activity" element={<ActivityLog />} />
             <Route path="/sessions" element={<AllSessions />} />

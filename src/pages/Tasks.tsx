@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { getTasks, getUserProfile, updateTaskStatus, sendMessage } from '../services/api';
 import { RootState } from '../redux/store';
+import { getTasksForUser, updateTaskStatus, sendMessage } from '../services/api';
 
 interface Task {
   id: string;
   assignedBy: string;
-  task: string;
-  createdAt: any;
+  assignedTo: string;
+  taskName: string;
+  taskDescription: string;
   status: string;
+  createdAt: any;
   conversationId: string;
-  assignedByName?: string; // Optional: To store the display name of the assigner
 }
 
 const Tasks: React.FC = () => {
@@ -20,32 +21,19 @@ const Tasks: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!currentUser?.uid) return;
-
-    fetchTasks();
-  }, [currentUser?.uid]);
+    if (currentUser?.uid) {
+      fetchTasks();
+    }
+  }, [currentUser]);
 
   const fetchTasks = async () => {
+    if (!currentUser?.uid) return;
+    setLoading(true);
     try {
-      setLoading(true);
-      let fetchedTasks = await getTasks(currentUser.uid);
-
-      const tasksWithAssignerNames = await Promise.all(
-        fetchedTasks.map(async (task) => {
-          try {
-            const assignerProfile: any = await getUserProfile(task.assignedBy);
-            return { ...task, assignedByName: assignerProfile.displayName };
-          } catch (error) {
-            console.error('Error fetching assigner profile:', error);
-            return { ...task, assignedByName: 'Unknown User' }; // Fallback name
-          }
-        })
-      );
-
-      setTasks(tasksWithAssignerNames as Task[]);
+      const userTasks = await getTasksForUser(currentUser.uid);
+      setTasks(userTasks as Task[]);
     } catch (err) {
-      console.error("Error fetching tasks: ", err);
-      setError("Failed to load tasks.");
+      setError('Failed to load tasks.');
     } finally {
       setLoading(false);
     }
@@ -56,7 +44,7 @@ const Tasks: React.FC = () => {
     try {
       await updateTaskStatus(task.id, newStatus);
       if (newStatus === 'completed') {
-        await sendMessage(task.conversationId, currentUser.uid, `I have completed the task: "${task.task}"`);
+        await sendMessage(task.conversationId, currentUser.uid, `(${task.taskName}) task completed`);
       }
       // Refresh the tasks list to show the updated status
       fetchTasks(); 
@@ -67,28 +55,25 @@ const Tasks: React.FC = () => {
   };
 
   if (loading) {
-    return <div className="flex h-full items-center justify-center">Loading tasks...</div>;
+    return <div className="flex h-full items-center justify-center dark:bg-gray-900 dark:text-white">Loading tasks...</div>;
   }
 
   if (error) {
-    return <div className="flex h-full items-center justify-center text-red-500">{error}</div>;
+    return <div className="flex h-full items-center justify-center text-red-500 dark:bg-gray-900">{error}</div>;
   }
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-text-primary dark:text-white p-8">
       <div className="container mx-auto">
-        <h1 className="text-4xl font-bold text-center mb-8">My Tasks</h1>
-        
+        <h1 className="text-4xl font-bold mb-8 dark:text-white">My Tasks</h1>
         {tasks.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {tasks.map(task => (
-              <div key={task.id} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
-                <p className="text-lg font-semibold mb-2">{task.task}</p>
-                <p className="text-sm text-text-secondary dark:text-gray-400 mb-4">
-                  Assigned by: {task.assignedByName}
-                </p>
-                <div className="flex justify-between items-center">
-                  <span className={`px-2 py-1 text-xs font-semibold rounded-full ${task.status === 'pending' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-200 text-green-800'}`}>
+              <div key={task.id} className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+                <p className="text-lg font-semibold dark:text-white">{task.taskName}</p>
+                <p className="text-sm text-text-secondary dark:text-gray-400">{task.taskDescription}</p>
+                <div className="flex justify-between items-center mt-4">
+                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${task.status === 'pending' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-100' : 'bg-green-200 text-green-800 dark:bg-green-700 dark:text-green-100'}`}>
                     {task.status}
                   </span>
                   <span className="text-xs text-text-secondary dark:text-gray-400">
@@ -98,7 +83,7 @@ const Tasks: React.FC = () => {
                 {task.status === 'pending' && (
                   <button 
                     onClick={() => handleUpdateTaskStatus(task, 'completed')}
-                    className="mt-4 w-full bg-green-500 text-white py-2 rounded-md hover:bg-green-600"
+                    className="mt-4 w-full bg-green-500 text-white py-2 rounded-md hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
                   >
                     Mark as Complete
                   </button>

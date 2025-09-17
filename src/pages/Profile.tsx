@@ -1,16 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../redux/store';
 import { updateProfile } from '../redux/features/auth/authSlice';
+import { uploadFile } from '../services/storage';
+import { updateUserPhotoURL } from '../services/api';
 
 const Profile: React.FC = () => {
   const dispatch: AppDispatch = useDispatch();
   const { user, loading } = useSelector((state: RootState) => state.auth);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
   const [skills, setSkills] = useState<string[]>([]);
   const [currentSkill, setCurrentSkill] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -39,21 +44,68 @@ const Profile: React.FC = () => {
     }
   };
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && user) {
+      const file = e.target.files[0];
+      setUploading(true);
+      setUploadStatus('Uploading...');
+      try {
+        const photoURL = await uploadFile(file, `profile_pictures/${user.uid}`);
+        await updateUserPhotoURL(user.uid, photoURL);
+        dispatch(updateProfile({ photoURL }));
+        setUploadStatus('Profile picture updated successfully!');
+      } catch (error) {
+        console.error("Error uploading photo:", error);
+        setUploadStatus('Failed to upload profile picture.');
+      } finally {
+        setUploading(false);
+        setTimeout(() => setUploadStatus(null), 3000);
+      }
+    }
+  };
+
   if (!user) {
     return <div className="text-center p-8">Please login to view your profile.</div>;
   }
 
   const rating = user.rating || 0;
+  const ratingCount = user.ratingCount || 0;
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-4 sm:p-8 transition-colors duration-300">
       <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
+        {uploadStatus && (
+          <div className={`p-4 mb-4 text-sm text-center rounded-lg ${uploadStatus.includes('successfully') ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+            {uploadStatus}
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row items-center space-y-6 sm:space-y-0 sm:space-x-8">
-          <img 
-            src={user.photoURL || 'https://via.placeholder.com/150'} 
-            alt="Profile" 
-            className="w-32 h-32 rounded-full ring-4 ring-indigo-500 object-cover shadow-lg"
-          />
+            <div className="relative">
+                <img 
+                    src={user.photoURL || 'https://via.placeholder.com/150'} 
+                    alt="Profile" 
+                    className="w-32 h-32 rounded-full ring-4 ring-indigo-500 object-cover shadow-lg"
+                />
+                <button 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-0 right-0 bg-indigo-600 hover:bg-indigo-700 text-white p-2 rounded-full shadow-md transition-transform transform hover:scale-110"
+                    disabled={uploading}
+                >
+                    {uploading ? (
+                        <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                    )}
+                </button>
+                <input type="file" ref={fileInputRef} onChange={handlePhotoUpload} className="hidden" accept="image/*" />
+            </div>
+
           <div className="text-center sm:text-left">
             <h1 className="text-4xl font-bold text-gray-900 dark:text-white">{user.displayName}</h1>
             <p className="text-gray-500 dark:text-gray-400 mt-1">{user.email}</p>
@@ -63,7 +115,7 @@ const Profile: React.FC = () => {
                   <path d="M10 15l-5.878 3.09 1.123-6.545L.489 6.91l6.572-.955L10 0l2.939 5.955 6.572.955-4.756 4.635 1.123 6.545z"/>
                 </svg>
               ))}
-              <span className="ml-2 text-gray-600 dark:text-gray-300 font-semibold">{rating.toFixed(1)}</span>
+              <span className="ml-2 text-gray-600 dark:text-gray-300 font-semibold">{rating.toFixed(1)} ({ratingCount} reviews)</span>
             </div>
           </div>
         </div>
