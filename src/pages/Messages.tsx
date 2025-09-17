@@ -1,0 +1,206 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useSelector } from 'react-redux';
+import { getConversations, getMessages, sendMessage, createTask, getUserProfile } from '../services/api';
+import { RootState } from '../redux/store';
+import { onSnapshot, collection, query, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
+import CreateTaskModal from '../components/CreateTaskModal';
+
+interface Message {
+  id: string;
+  senderId: string;
+  text: string;
+  timestamp: any;
+}
+
+interface Conversation {
+  id: string;
+  participants: string[];
+  lastMessage: string;
+  lastMessageTimestamp: any;
+  otherUserName: string;
+  otherUserAvatar: string;
+}
+
+const Messages: React.FC = () => {
+  const { user: currentUser } = useSelector((state: RootState) => state.auth);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const messagesEndRef = useRef<null | HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+
+    const fetchConversations = async () => {
+      try {
+        const convos = await getConversations(currentUser.uid);
+        setConversations(convos as Conversation[]);
+      } catch (err) {
+        console.error("Error fetching conversations: ", err);
+        setError("Failed to load conversations.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchConversations();
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (selectedConversation) {
+      const messagesCol = collection(db, `conversations/${selectedConversation.id}/messages`);
+      const q = query(messagesCol, orderBy('timestamp', 'asc'));
+
+      const unsubscribe = onSnapshot(q, snapshot => {
+        const fetchedMessages = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Message));
+        setMessages(fetchedMessages);
+      });
+
+      return () => unsubscribe();
+    }
+  }, [selectedConversation]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const handleSendMessage = async () => {
+    if (newMessage.trim() === '' || !selectedConversation || !currentUser) return;
+
+    try {
+      await sendMessage(selectedConversation.id, currentUser.uid, newMessage);
+      setNewMessage('');
+    } catch (err) {
+      console.error("Error sending message: ", err);
+      // Optionally, show an error to the user
+    }
+  };
+
+  const handleCreateTask = async (taskDescription: string) => {
+    if (!selectedConversation || !currentUser) return;
+
+    const otherParticipantId = selectedConversation.participants.find(p => p !== currentUser.uid);
+    if (!otherParticipantId) return;
+
+    try {
+      await createTask(currentUser.uid, otherParticipantId, taskDescription, selectedConversation.id);
+      setIsModalOpen(false);
+      // Optionally, send a message confirming the task was created
+      await sendMessage(selectedConversation.id, currentUser.uid, `I have created a new task for you: "${taskDescription}"`);
+    } catch (error) {
+      console.error('Error creating task:', error);
+    }
+  };
+
+  const handleSelectConversation = (convo: Conversation) => {
+    setSelectedConversation(convo);
+  }
+
+  if (loading) {
+    return <div className="flex h-full items-center justify-center">Loading conversations...</div>;
+  }
+
+  if (error) {
+    return <div className="flex h-full items-center justify-center text-red-500">{error}</div>;
+  }
+
+  return (
+    <div className="flex h-[calc(100vh-4rem)] bg-background-light dark:bg-gray-900 transition-colors duration-300">
+      <CreateTaskModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onCreateTask={handleCreateTask} 
+      />
+
+      {/* Conversation List */}
+      <div className={`w-full md:w-1/3 bg-white dark:bg-gray-800 border-r border-border-divider dark:border-gray-700 ${selectedConversation ? 'hidden md:block' : 'block'}`}>
+        <div className="p-4 border-b border-border-divider dark:border-gray-700">
+          <h1 className="text-xl font-bold text-text-primary dark:text-white">Chats</h1>
+        </div>
+        <div>
+          {conversations.map(convo => (
+            <div 
+              key={convo.id} 
+              className={`p-4 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${selectedConversation?.id === convo.id ? 'bg-gray-100 dark:bg-gray-700' : ''}`}
+              onClick={() => handleSelectConversation(convo)}
+            >
+              <div className="flex items-center">
+                <img src={convo.otherUserAvatar || 'https://via.placeholder.com/150'} alt={convo.otherUserName} className="w-12 h-12 rounded-full mr-4" />
+                <div className="flex-1">
+                  <div className="flex justify-between">
+                    <p className="font-semibold text-text-primary dark:text-white">{convo.otherUserName}</p>
+                    {convo.lastMessageTimestamp && <p className="text-xs text-text-secondary dark:text-gray-400">{new Date(convo.lastMessageTimestamp?.toDate()).toLocaleTimeString()}</p>}
+                  </div>
+                  <p className="text-sm text-text-secondary dark:text-gray-400 truncate">{convo.lastMessage}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Chat Window */}
+      <div className={`w-full md:w-2/3 flex flex-col ${selectedConversation ? 'block' : 'hidden md:block'}`}>
+        {selectedConversation ? (
+          <>
+            {/* Chat Header */}
+            <div className="p-4 bg-white dark:bg-gray-800 border-b border-border-divider dark:border-gray-700 flex items-center">
+                <button onClick={() => setSelectedConversation(null)} className="md:hidden mr-4 text-text-primary dark:text-white">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <img src={selectedConversation.otherUserAvatar || 'https://via.placeholder.com/150'} alt={selectedConversation.otherUserName} className="w-10 h-10 rounded-full mr-4" />
+                <h2 className="text-lg font-semibold text-text-primary dark:text-white">{selectedConversation.otherUserName}</h2>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 p-4 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+              {messages.map(msg => (
+                <div key={msg.id} className={`flex ${msg.senderId === currentUser?.uid ? 'justify-end' : 'justify-start'} mb-4`}>
+                  <div className={`max-w-xs px-4 py-2 rounded-lg ${msg.senderId === currentUser?.uid ? 'bg-primary text-white' : 'bg-white dark:bg-gray-700 text-text-primary dark:text-white'}`}>
+                    <p className="text-sm">{msg.text}</p>
+                    {msg.timestamp && <p className={`text-xs mt-1 ${msg.senderId === currentUser?.uid ? 'text-gray-300' : 'text-text-secondary dark:text-gray-400'}`}>{new Date(msg.timestamp?.toDate()).toLocaleTimeString()}</p>}
+                  </div>
+                </div>
+              ))}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="p-4 bg-white dark:bg-gray-800 border-t border-border-divider dark:border-gray-700">
+                <div className="flex items-center">
+                    <input 
+                      type="text" 
+                      placeholder="Type a message..." 
+                      className="w-full border rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                    />
+                    <button onClick={handleSendMessage} className="ml-4 bg-primary text-white p-2 rounded-full hover:bg-indigo-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 12h14M12 5l7 7-7 7" /></svg>
+                    </button>
+                    <button 
+                      onClick={() => setIsModalOpen(true)} 
+                      className="ml-4 bg-blue-500 text-white p-2 rounded-full hover:bg-blue-700"
+                    >
+                        Create Task
+                    </button>
+                </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex h-full items-center justify-center text-text-secondary dark:text-gray-400">
+            <p>Select a conversation to start chatting.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Messages;

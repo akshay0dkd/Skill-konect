@@ -1,107 +1,46 @@
-import React from "react";
-import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom"; // Add this import
+import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Home: React.FC = () => {
-  const skills = [
-    { title: "Web Development", icon: "💻" },
-    { title: "Design & UI/UX", icon: "🎨" },
-    { title: "Music & Arts", icon: "🎵" },
-    { title: "Languages", icon: "🌍" },
-    { title: "Software Development", icon: "⚙️" },
-    { title: "Programming Languages", icon: "📜" },
-    { title: "Data Science", icon: "📊" },
-    { title: "AI & Machine Learning", icon: "🤖" },
-    { title: "Business & Marketing", icon: "📈" },
-    { title: "Photography & Editing", icon: "📷" },
-    { title: "Cooking & Culinary Arts", icon: "🍳" },
-    { title: "Fitness & Wellness", icon: "💪" },
-  ];
-
-  const navigate = useNavigate(); // Add this hook
-
-  const handleLoginClick = () => {
-    navigate('/login'); // Add this function
-  };
-
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-900 via-blue-800 to-blue-600 text-white">
-      {/* Navbar */}
-      <motion.nav
-        initial={{ y: -80, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6 }}
-        className="px-8 py-4 flex justify-between items-center bg-blue-900/80 backdrop-blur-md shadow-md sticky top-0 z-50"
-      >
-        <h1 className="text-2xl font-extrabold tracking-wide">Skill Konect</h1>
-        <ul className="flex gap-6 text-lg font-medium">
-          <li className="hover:text-blue-300 cursor-pointer transition">Home</li>
-          <li className="hover:text-blue-300 cursor-pointer transition">Explore</li>
-          <li className="hover:text-blue-300 cursor-pointer transition">Profile</li>
-          <li className="hover:text-blue-300 cursor-pointer transition">Messages</li>
-          {/* Add Login button to navbar */}
-          <li 
-            className="hover:text-blue-300 cursor-pointer transition bg-yellow-400 text-blue-900 px-4 py-1 rounded-md font-semibold"
-            onClick={handleLoginClick}
-          >
-            Login
-          </li>
-        </ul>
-      </motion.nav>
-
+    <div className="bg-gray-100 font-sans">
       {/* Hero Section */}
-      <section className="flex flex-col items-center justify-center flex-grow text-center px-6 py-20">
-        <motion.h2
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.8 }}
-          className="text-6xl font-extrabold mb-6 drop-shadow-lg"
-        >
-          Welcome to <span className="text-yellow-400">Skill Konect</span>
-        </motion.h2>
+      <header className="bg-gradient-to-r from-primary to-blue-500 text-white text-center p-8 md:p-16">
+        <h1 className="text-4xl md:text-6xl font-bold mb-4">Welcome to Skill Konect</h1>
+        <p className="text-lg md:text-xl mb-8">The platform where you can connect with professionals, learn new skills, and mentor others.</p>
+        <Link to="/skills" className="bg-white text-primary font-bold py-2 px-6 rounded-full hover:bg-gray-200 transition duration-300">Explore Skills</Link>
+      </header>
 
-        <motion.p
-          initial={{ y: 40, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.8 }}
-          className="text-xl max-w-2xl mb-8"
-        >
-          A community-driven platform to connect, share, and exchange skills.
-          Learn from others and grow together.
-        </motion.p>
+      {/* Features Section */}
+      <section className="py-16">
+        <div className="container mx-auto px-4">
+          <h2 className="text-3xl font-bold text-center text-primary mb-12">Why Choose Skill Konect?</h2>
+          <div className="flex flex-wrap -mx-4">
+            
+            <div className="w-full md:w-1/3 px-4 mb-8">
+              <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Learn from Experts</h3>
+                <p className="text-gray-600">Find experienced professionals to guide you in your learning journey. Get personalized feedback and accelerate your growth.</p>
+              </div>
+            </div>
 
-        {/* Update Get Started button to navigate to login */}
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.95 }}
-          className="px-8 py-3 bg-yellow-400 text-blue-900 font-semibold rounded-lg shadow-lg hover:bg-yellow-300 transition"
-          onClick={handleLoginClick}
-        >
-          Get Started
-        </motion.button>
-      </section>
+            <div className="w-full md:w-1/3 px-4 mb-8">
+              <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Share Your Knowledge</h3>
+                <p className="text-gray-600">Become a mentor and help others achieve their goals. Enhance your leadership skills and give back to the community.</p>
+              </div>
+            </div>
 
-      {/* Skills Grid */}
-      <section className="px-8 py-16 bg-white text-gray-900">
-        <h3 className="text-4xl font-bold text-center mb-12">Explore Popular Skills</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
-          {skills.map((skill, i) => (
-            <motion.div
-              key={i}
-              whileHover={{ scale: 1.05, y: -5 }}
-              className="bg-gray-100 rounded-xl shadow-lg p-8 flex flex-col items-center transition cursor-pointer"
-            >
-              <span className="text-5xl mb-4">{skill.icon}</span>
-              <h4 className="text-xl font-semibold">{skill.title}</h4>
-            </motion.div>
-          ))}
+            <div className="w-full md:w-1/3 px-4 mb-8">
+              <div className="bg-white rounded-lg shadow-lg p-8 text-center">
+                <h3 className="text-xl font-bold text-gray-800 mb-4">Build Your Network</h3>
+                <p className="text-gray-600">Connect with like-minded individuals, expand your professional network, and collaborate on exciting projects.</p>
+              </div>
+            </div>
+
+          </div>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-blue-900 text-center py-6 mt-auto text-white/80 text-sm">
-        © {new Date().getFullYear()} Skill Konect — Connect. Share. Grow.
-      </footer>
     </div>
   );
 };
