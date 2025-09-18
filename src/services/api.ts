@@ -153,62 +153,71 @@ export const getRequests = async (userId: string, type: 'sent' | 'received') => 
 
 // Function to update the status of a mentorship request
 export const updateRequestStatus = async (requestId: string, newStatus: 'accepted' | 'rejected') => {
-    const requestRef = doc(db, 'mentorship_requests', requestId);
-    const requestSnap = await getDoc(requestRef);
+    try {
+        let conversationId: string | null = null;
 
-    if (!requestSnap.exists()) {
-        throw new Error("Request not found. It may have been deleted.");
-    }
+        await runTransaction(db, async (transaction) => {
+            const requestRef = doc(db, 'mentorship_requests', requestId);
+            const requestSnap = await transaction.get(requestRef);
 
-    let conversationId: string | null = null;
+            if (!requestSnap.exists()) {
+                throw new Error("Request not found. It may have been deleted.");
+            }
 
-    if (newStatus === 'accepted') {
-        const requestData = requestSnap.data();
-        const fromUserRef = doc(db, 'users', requestData.fromUserId);
-        const toUserRef = doc(db, 'users', requestData.toUserId);
+            if (newStatus === 'accepted') {
+                const requestData = requestSnap.data();
+                const fromUserRef = doc(db, 'users', requestData.fromUserId);
+                const toUserRef = doc(db, 'users', requestData.toUserId);
 
-        const fromUserSnap = await getDoc(fromUserRef);
-        const toUserSnap = await getDoc(toUserRef);
+                const fromUserSnap = await transaction.get(fromUserRef);
+                const toUserSnap = await transaction.get(toUserRef);
 
-        if (!fromUserSnap.exists() || !toUserSnap.exists()) {
-            throw new Error("One or both users in the request no longer exist.");
-        }
+                if (!fromUserSnap.exists() || !toUserSnap.exists()) {
+                    throw new Error("One or both users in the request no longer exist.");
+                }
 
-        await updateDoc(fromUserRef, { connections: arrayUnion(requestData.toUserId) });
-        await updateDoc(toUserRef, { connections: arrayUnion(requestData.fromUserId) });
+                transaction.update(fromUserRef, { connections: arrayUnion(requestData.toUserId) });
+                transaction.update(toUserRef, { connections: arrayUnion(requestData.fromUserId) });
 
-        const conversationsRef = collection(db, 'conversations');
-        const q = query(conversationsRef, where('participants', 'in', [[requestData.fromUserId, requestData.toUserId], [requestData.toUserId, requestData.fromUserId]]));
-        const querySnapshot = await getDocs(q);
+                const conversationsRef = collection(db, 'conversations');
+                const q = query(conversationsRef, where('participants', 'in', [[requestData.fromUserId, requestData.toUserId], [requestData.toUserId, requestData.fromUserId]]));
+                
+                const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-            conversationId = querySnapshot.docs[0].id;
-        } else {
-            const conversationRef = doc(collection(db, 'conversations'));
-            await setDoc(conversationRef, {
-                id: conversationRef.id,
-                participants: [requestData.fromUserId, requestData.toUserId],
-                createdAt: serverTimestamp(),
-                lastMessage: null,
-                lastMessageTimestamp: null
+                if (!querySnapshot.empty) {
+                    conversationId = querySnapshot.docs[0].id;
+                } else {
+                    const conversationRef = doc(collection(db, 'conversations'));
+                    transaction.set(conversationRef, {
+                        id: conversationRef.id,
+                        participants: [requestData.fromUserId, requestData.toUserId],
+                        createdAt: serverTimestamp(),
+                        lastMessage: null,
+                        lastMessageTimestamp: null
+                    });
+                    conversationId = conversationRef.id;
+                }
+
+                const messagesCol = collection(db, `conversations/${conversationId}/messages`);
+                const messageRef = doc(messagesCol);
+                transaction.set(messageRef, {
+                    senderId: requestData.fromUserId,
+                    text: `Hi! I've accepted your mentorship request for ${requestData.skill}.`,
+                    timestamp: serverTimestamp()
+                });
+            }
+
+            transaction.update(requestRef, {
+                status: newStatus,
+                updatedAt: new Date()
             });
-            conversationId = conversationRef.id;
-        }
-        
-        const messagesCol = collection(db, `conversations/${conversationId}/messages`);
-        await addDoc(messagesCol, {
-            senderId: requestData.fromUserId,
-            text: `Hi! I've accepted your mentorship request for ${requestData.skill}.`,
-            timestamp: serverTimestamp()
         });
+
+        return conversationId;
+    } catch (error) {
+        console.error("Error updating request status:", error);
+        throw error;
     }
-
-    await updateDoc(requestRef, {
-        status: newStatus,
-        updatedAt: new Date()
-    });
-
-    return conversationId;
 };
 
 // Function to get conversations for a user
@@ -376,6 +385,7 @@ export const createTask = async (assignedBy: string, assignedTo: string, taskNam
         taskDescription,
         conversationId,
         status: 'pending',
+        completed: false,
         createdAt: serverTimestamp(),
     });
 };
@@ -387,47 +397,10 @@ export const getTasksForUser = async (userId: string) => {
     return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 };
 
-export const updateTaskStatus = async (taskId: string, status: string) => {
+export const updateTaskStatus = async (taskId: string, status: string, completed: boolean) => {
     const taskRef = doc(db, 'tasks', taskId);
     await updateDoc(taskRef, {
         status,
+        completed,
     });
-};
-
-export const addReview = async (reviewerId: string, revieweeId: string, rating: number, comment: string) => {
-  const revieweeRef = doc(db, 'users', revieweeId);
-  const reviewRef = doc(collection(db, 'users', revieweeId, 'reviews'));
-
-  try {
-    await runTransaction(db, async (transaction) => {
-      const revieweeDoc = await transaction.get(revieweeRef);
-      if (!revieweeDoc.exists()) {
-        throw "User document does not exist!";
-      }
-
-      // 1. Update user's rating
-      const userData = revieweeDoc.data();
-      const currentRating = userData.rating || 0;
-      const ratingCount = userData.ratingCount || 0;
-
-      const newRatingCount = ratingCount + 1;
-      const newAverageRating = ((currentRating * ratingCount) + rating) / newRatingCount;
-
-      transaction.update(revieweeRef, {
-        rating: newAverageRating,
-        ratingCount: newRatingCount
-      });
-
-      // 2. Create the new review document
-      transaction.set(reviewRef, {
-        reviewerId,
-        rating,
-        comment,
-        createdAt: serverTimestamp(),
-      });
-    });
-  } catch (error) {
-    console.error("Error adding review: ", error);
-    throw error;
-  }
 };

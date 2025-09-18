@@ -12,6 +12,7 @@ interface Task {
   status: string;
   createdAt: any;
   conversationId: string;
+  completed: boolean;
 }
 
 const Tasks: React.FC = () => {
@@ -39,12 +40,14 @@ const Tasks: React.FC = () => {
     }
   };
 
-  const handleUpdateTaskStatus = async (task: Task, newStatus: string) => {
+  const handleUpdateTaskStatus = async (task: Task, newStatus: string, completed: boolean) => {
     if (!currentUser?.uid) return;
     try {
-      await updateTaskStatus(task.id, newStatus);
+      await updateTaskStatus(task.id, newStatus, completed);
       if (newStatus === 'completed') {
         await sendMessage(task.conversationId, currentUser.uid, `(${task.taskName}) task completed`);
+      } else {
+        await sendMessage(task.conversationId, currentUser.uid, `(${task.taskName}) task marked as incomplete`);
       }
       // Refresh the tasks list to show the updated status
       fetchTasks(); 
@@ -73,19 +76,26 @@ const Tasks: React.FC = () => {
                 <p className="text-lg font-semibold dark:text-white">{task.taskName}</p>
                 <p className="text-sm text-text-secondary dark:text-gray-400">{task.taskDescription}</p>
                 <div className="flex justify-between items-center mt-4">
-                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${task.status === 'pending' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-100' : 'bg-green-200 text-green-800 dark:bg-green-700 dark:text-green-100'}`}>
-                    {task.status}
+                  <span className={`px-3 py-1 text-sm font-semibold rounded-full ${task.completed ? 'bg-green-200 text-green-800 dark:bg-green-700 dark:text-green-100' : 'bg-yellow-200 text-yellow-800 dark:bg-yellow-700 dark:text-yellow-100'}`}>
+                    {task.completed ? 'Completed' : 'Pending'}
                   </span>
                   <span className="text-xs text-text-secondary dark:text-gray-400">
                     {new Date(task.createdAt?.toDate()).toLocaleDateString()}
                   </span>
                 </div>
-                {task.status === 'pending' && (
+                {task.status === 'pending' ? (
                   <button 
-                    onClick={() => handleUpdateTaskStatus(task, 'completed')}
+                    onClick={() => handleUpdateTaskStatus(task, 'completed', true)}
                     className="mt-4 w-full bg-green-500 text-white py-2 rounded-md hover:bg-green-600 dark:bg-green-600 dark:hover:bg-green-700"
                   >
                     Mark as Complete
+                  </button>
+                ) : (
+                  <button 
+                    onClick={() => handleUpdateTaskStatus(task, 'pending', false)}
+                    className="mt-4 w-full bg-yellow-500 text-white py-2 rounded-md hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700"
+                  >
+                    Mark as Incomplete
                   </button>
                 )}
               </div>
