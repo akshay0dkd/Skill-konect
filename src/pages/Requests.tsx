@@ -87,11 +87,11 @@ const RequestsPage: React.FC = () => {
   }, [fetchAllRequests]);
 
   // Handles accepting or rejecting a mentorship request
-  const handleAction = async (requestId: string, status: 'accepted' | 'rejected') => {
+  const handleAction = async (requestId: string, status: 'accepted' | 'rejected', menteeId: string) => {
     setIsUpdating(requestId);
     setError(null); // Clear previous errors
     try {
-      const conversationId = await updateRequestStatus(requestId, status);
+      const conversationId = await updateRequestStatus(requestId, status, menteeId);
       
       // If accepted, navigate to chat
       if (status === 'accepted' && conversationId) {
@@ -123,7 +123,7 @@ const RequestsPage: React.FC = () => {
             </span>
         </div>
         <p className="text-gray-700 dark:text-gray-300"><span className="font-semibold">Skill:</span> {request.skill}</p>
-        {request.message && <p className="text-gray-700 dark:text-gray-300 italic">"{request.message}"</p>}
+        {request.message && <p className="text-gray-700 dark:text-gray-300 italic">\"{request.message}\"</p>}
         <div className="flex items-center justify-between pt-2">
             <span className={`px-3 py-1 text-xs font-bold rounded-full 
                 ${request.status === 'pending' ? 'bg-yellow-200 text-yellow-800' : 
@@ -134,13 +134,13 @@ const RequestsPage: React.FC = () => {
             {activeTab === 'received' && request.status === 'pending' && (
                 <div className="flex items-center space-x-2">
                     <button 
-                        onClick={() => handleAction(request.id, 'accepted')} 
+                        onClick={() => handleAction(request.id, 'accepted', request.fromUserId)} 
                         disabled={!!isUpdating}
                         className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400 transition-colors">
                         {isUpdating === request.id ? 'Accepting...' : 'Accept'}
                     </button>
                     <button 
-                        onClick={() => handleAction(request.id, 'rejected')} 
+                        onClick={() => handleAction(request.id, 'rejected', request.fromUserId)} 
                         disabled={!!isUpdating}
                         className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-400 transition-colors">
                         {isUpdating === request.id ? 'Rejecting...' : 'Reject'}

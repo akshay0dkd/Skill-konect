@@ -98,17 +98,15 @@ const router = createBrowserRouter([
   },
 ]);
 
-const container = document.getElementById('root');
+const rootElement = document.getElementById("root")!;
 
-// This check prevents the root from being created multiple times in development.
-if (container && !container.hasChildNodes()) {
-  ReactDOM.createRoot(container).render(
-    <React.StrictMode>
-      <Provider store={store}>
-        <Suspense fallback={<div className="flex justify-center items-center h-screen w-full"><div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div></div>}>
-          <RouterProvider router={router} />
-        </Suspense>
-      </Provider>
-    </React.StrictMode>
+// This check ensures that the app is only rendered once, even with hot-reloading.
+if (!rootElement.hasChildNodes()) {
+  ReactDOM.createRoot(rootElement).render(
+    <Provider store={store}>
+      <Suspense fallback={<div className="flex justify-center items-center h-screen w-full"><div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div></div>}>
+        <RouterProvider router={router} />
+      </Suspense>
+    </Provider>
   );
 }

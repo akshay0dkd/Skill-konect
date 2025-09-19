@@ -6,6 +6,7 @@ import {
   User
 } from 'firebase/auth';
 import { auth, db } from '../firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { 
   doc, 
   setDoc, 
@@ -151,7 +152,7 @@ export const getRequests = async (userId: string, type: 'sent' | 'received') => 
 };
 
 // Function to update the status of a mentorship request
-export const updateRequestStatus = async (requestId: string, newStatus: 'accepted' | 'rejected') => {
+export const updateRequestStatus = async (requestId: string, newStatus: 'accepted' | 'rejected', menteeId: string) => {
     const requestRef = doc(db, 'mentorship_requests', requestId);
 
     if (newStatus === 'rejected') {
@@ -161,55 +162,11 @@ export const updateRequestStatus = async (requestId: string, newStatus: 'accepte
 
     // Handle accepted requests
     try {
-        // Use a transaction to ensure atomicity
-        const conversationId = await runTransaction(db, async (transaction) => {
-            const requestSnap = await transaction.get(requestRef);
-            if (!requestSnap.exists()) {
-                throw new Error("Request not found.");
-            }
-            const requestData = requestSnap.data();
-            const { fromUserId, toUserId, skill } = requestData;
-
-            // Create a deterministic conversation ID
-            const convId = [fromUserId, toUserId].sort().join('_');
-            const conversationRef = doc(db, 'conversations', convId);
-
-            const conversationSnap = await transaction.get(conversationRef);
-
-            if (!conversationSnap.exists()) {
-                // If conversation doesn't exist, create it
-                transaction.set(conversationRef, {
-                    id: convId,
-                    participants: [fromUserId, toUserId].sort(), // Store sorted participants
-                    createdAt: serverTimestamp(),
-                    lastMessage: null,
-                    lastMessageTimestamp: null,
-                });
-            }
-
-            // Update request status to accepted
-            transaction.update(requestRef, { status: 'accepted', updatedAt: serverTimestamp() });
-
-            // Add a welcome message to the chat. This message should always be added.
-            // const messageRef = doc(collection(db, `conversations/${convId}/messages`));
-            // const welcomeMessage = `Hi! I've accepted your mentorship request for ${skill}. I'm happy to help.`;
-            // transaction.set(messageRef, {
-            //     senderId: toUserId, // The user who accepted the request
-            //     text: welcomeMessage,
-            //     timestamp: serverTimestamp(),
-            // });
-
-            // // Update the last message on the conversation
-            // transaction.update(conversationRef, {
-            //      lastMessage: welcomeMessage,
-            //      lastMessageTimestamp: serverTimestamp(),
-            // });
-
-            return convId;
-        });
-
-        return conversationId;
-
+      const functions = getFunctions();
+      const acceptRequest = httpsCallable(functions, 'acceptRequest');
+      const result = await acceptRequest({ requestId, menteeId });
+      const { conversationId } = result.data;
+      return conversationId;
     } catch (error) {
         console.error("Error accepting request:", error);
         throw error;
