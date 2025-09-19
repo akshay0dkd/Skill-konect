@@ -1,39 +1,53 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import ReactDOM from "react-dom/client";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Provider } from "react-redux";
 import { store } from "./redux/store";
 import App from "./App";
-import LoginPage from "./pages/Login";
-import RegisterPage from "./pages/Register";
-import ProfilePage from "./pages/ProfilePage";
-import EditProfilePage from "./pages/EditProfile";
-import SearchPage from "./pages/Home";
-import RequestsPage from "./pages/Requests";
-import ChatPage from "./pages/Messages";
-import TasksPage from "./pages/Tasks";
 import ProtectedRoute from "./components/ProtectedRoute";
-import ErrorPage from "./pages/ErrorPage";
-import Dashboard from "./pages/Dashboard";
-import ProfileRedirect from "./pages/ProfileRedirect";
+import { ROUTES } from "./constants/routes";
 import "./index.css";
+
+const HomePage = lazy(() => import("./pages/Home"));
+const LoginPage = lazy(() => import("./pages/Login"));
+const RegisterPage = lazy(() => import("./pages/Register"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const EditProfilePage = lazy(() => import("./pages/EditProfile"));
+const RequestsPage = lazy(() => import("./pages/Requests"));
+const ChatPage = lazy(() => import("./pages/Messages"));
+const TasksPage = lazy(() => import("./pages/Tasks"));
+const DashboardPage = lazy(() => import("./pages/Dashboard"));
+const ProfileRedirect = lazy(() => import("./pages/ProfileRedirect"));
+const ErrorPage = lazy(() => import("./pages/ErrorPage"));
 
 const router = createBrowserRouter([
   {
-    path: "/",
+    path: ROUTES.ROOT,
     element: <App />,
     errorElement: <ErrorPage />,
     children: [
       {
-        path: "/login",
+        index: true,
+        element: <HomePage />,
+      },
+      {
+        path: ROUTES.LOGIN,
         element: <LoginPage />,
       },
       {
-        path: "/register",
+        path: ROUTES.REGISTER,
         element: <RegisterPage />,
       },
       {
-        path: "/profile",
+        path: ROUTES.DASHBOARD,
+        element: (
+          <ProtectedRoute>
+            <DashboardPage />
+          </ProtectedRoute>
+        ),
+      },
+      {
+        path: ROUTES.PROFILE,
         element: (
           <ProtectedRoute>
             <ProfileRedirect />
@@ -41,7 +55,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/profile/:userId",
+        path: ROUTES.PROFILE_PARAM,
         element: (
           <ProtectedRoute>
             <ProfilePage />
@@ -49,7 +63,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/profile/edit",
+        path: ROUTES.EDIT_PROFILE,
         element: (
           <ProtectedRoute>
             <EditProfilePage />
@@ -57,15 +71,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        index: true,
-        element: (
-          <ProtectedRoute>
-            <SearchPage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "/requests",
+        path: ROUTES.REQUESTS,
         element: (
           <ProtectedRoute>
             <RequestsPage />
@@ -73,7 +79,7 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/chat/:conversationId",
+        path: ROUTES.CHAT,
         element: (
           <ProtectedRoute>
             <ChatPage />
@@ -81,18 +87,10 @@ const router = createBrowserRouter([
         ),
       },
       {
-        path: "/tasks",
+        path: ROUTES.TASKS,
         element: (
           <ProtectedRoute>
             <TasksPage />
-          </ProtectedRoute>
-        ),
-      },
-      {
-        path: "/dashboard",
-        element: (
-          <ProtectedRoute>
-            <Dashboard />
           </ProtectedRoute>
         ),
       },
@@ -100,10 +98,17 @@ const router = createBrowserRouter([
   },
 ]);
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <Provider store={store}>
-      <RouterProvider router={router} future={{ v7_relativeSplatPath: true, v7_startTransition: true }} />
-    </Provider>
-  </React.StrictMode>
-);
+const container = document.getElementById('root');
+
+// This check prevents the root from being created multiple times in development.
+if (container && !container.hasChildNodes()) {
+  ReactDOM.createRoot(container).render(
+    <React.StrictMode>
+      <Provider store={store}>
+        <Suspense fallback={<div className="flex justify-center items-center h-screen w-full"><div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div></div>}>
+          <RouterProvider router={router} />
+        </Suspense>
+      </Provider>
+    </React.StrictMode>
+  );
+}

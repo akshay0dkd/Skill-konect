@@ -1,24 +1,28 @@
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../../firebase';
-import { setUser } from './authSlice';
-import { AppDispatch } from '../../store';
+import { setUser, setLoading, setError } from './authSlice';
+import { AppDispatch } from '../store';
 import { getUserProfile } from '../../../services/api';
 
 export const setupAuthListener = (dispatch: AppDispatch) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
+  dispatch(setLoading(true)); // Ensure loading starts when the listener is set up
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
     if (user) {
-      // User is signed in
-      const userProfile = await getUserProfile(user.uid);
-      dispatch(setUser({
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        ...userProfile
-      }));
+      try {
+        const userProfile = await getUserProfile(user.uid);
+        dispatch(setUser(userProfile));
+      } catch (error: any) {
+        console.error('Failed to fetch user profile:', error);
+        dispatch(setError('Failed to fetch user profile. Please try again.'));
+        dispatch(setUser(null)); // Log out the user if profile fetch fails
+      } finally {
+        dispatch(setLoading(false)); // Stop loading after attempt
+      }
     } else {
-      // User is signed out
       dispatch(setUser(null));
+      dispatch(setLoading(false)); // Stop loading if no user
     }
   });
+
+  return unsubscribe;
 };

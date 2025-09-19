@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { getRequests, updateRequestStatus, getUserProfile } from '../services/api';
 import { RootState } from '../redux/store';
+import { ROUTES } from '../constants/routes';
 
+// Request interface reflecting Firestore data structure
 interface Request {
   id: string;
   fromUserId: string;
@@ -13,158 +15,170 @@ interface Request {
   skill: string;
   message: string;
   status: 'pending' | 'accepted' | 'rejected';
-  createdAt: any;
+  createdAt: { seconds: number; nanoseconds: number; };
 }
 
-const Requests: React.FC = () => {
+const RequestsPage: React.FC = () => {
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
   const navigate = useNavigate();
+
+  // State management
   const [sentRequests, setSentRequests] = useState<Request[]>([]);
   const [receivedRequests, setReceivedRequests] = useState<Request[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<'received' | 'sent'>('received');
-  const [updating, setUpdating] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'received' | 'sent'>('received');
+  const [isUpdating, setIsUpdating] = useState<string | null>(null); // Tracks the ID of the request being updated
 
-  const fetchRequests = async () => {
+  // Fetches and processes requests from Firestore
+  const fetchAllRequests = useCallback(async () => {
     if (!currentUser?.uid) return;
+
     setLoading(true);
+    setError(null);
+
     try {
       const [sent, received] = await Promise.all([
         getRequests(currentUser.uid, 'sent'),
         getRequests(currentUser.uid, 'received'),
       ]);
 
-      const enhanceRequests = async (requests: any[]) => {
+      // Fetches user profiles to get display names
+      const enhanceWithUserNames = async (requests: Omit<Request, 'fromUserName' | 'toUserName'>[]): Promise<Request[]> => {
         const userIds = new Set<string>();
         requests.forEach(req => {
           userIds.add(req.fromUserId);
           userIds.add(req.toUserId);
         });
 
-        const userProfiles = await Promise.all(
-          Array.from(userIds).map(uid => getUserProfile(uid).catch(() => ({ uid, displayName: 'Unknown User' })))
+        const profiles = await Promise.all(
+          Array.from(userIds).map(id => getUserProfile(id).catch(() => null))
         );
-
-        const profilesMap = new Map(userProfiles.map((p: any) => [p.uid, p.displayName]));
+        
+        const profileMap = new Map(profiles.filter(p => p).map(p => [p?.uid, p?.displayName || 'Unknown User']));
 
         return requests.map(req => ({
           ...req,
-          fromUserName: profilesMap.get(req.fromUserId) || 'Unknown User',
-          toUserName: profilesMap.get(req.toUserId) || 'Unknown User',
-        }));
+          fromUserName: profileMap.get(req.fromUserId),
+          toUserName: profileMap.get(req.toUserId),
+        })) as Request[];
       };
 
       const [enhancedSent, enhancedReceived] = await Promise.all([
-        enhanceRequests(sent),
-        enhanceRequests(received),
+          enhanceWithUserNames(sent),
+          enhanceWithUserNames(received),
       ]);
 
-      setSentRequests(enhancedSent as Request[]);
-      setReceivedRequests(enhancedReceived as Request[]);
+      // Sort requests by creation date
+      setSentRequests(enhancedSent.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds));
+      setReceivedRequests(enhancedReceived.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds));
 
-    } catch (err: any) {
-      console.error(`Error fetching requests: `, err);
-      setError(`Failed to load requests: ${err.message}`);
+    } catch (err) {
+      console.error("Failed to fetch requests:", err);
+      setError("An error occurred while fetching requests. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (currentUser?.uid) {
-      fetchRequests();
-    }
   }, [currentUser?.uid]);
 
-  const handleRequestAction = async (requestId: string, newStatus: 'accepted' | 'rejected') => {
-    setUpdating(`${requestId}-${newStatus}`);
+  // Initial fetch of requests on component mount
+  useEffect(() => {
+    fetchAllRequests();
+  }, [fetchAllRequests]);
+
+  // Handles accepting or rejecting a mentorship request
+  const handleAction = async (requestId: string, status: 'accepted' | 'rejected') => {
+    setIsUpdating(requestId);
+    setError(null); // Clear previous errors
     try {
-      const conversationId = await updateRequestStatus(requestId, newStatus);
-      if (newStatus === 'accepted' && conversationId) {
-        navigate(`/messages/${conversationId}`);
+      const conversationId = await updateRequestStatus(requestId, status);
+      
+      // If accepted, navigate to chat
+      if (status === 'accepted' && conversationId) {
+        navigate(ROUTES.MESSAGES);
       } else {
-        await fetchRequests(); // Refetch requests to update the list
+        // If rejected, or for some reason accept didn't return a conversationId, refresh data
+        await fetchAllRequests();
       }
-    } catch (error: any) {
-      console.error("Error updating request status: ", error);
-      alert(`Failed to update the request: ${error.message}`);
+    } catch (err: any) {
+      console.error(`Failed to ${status} request:`, err);
+      // Provide a more specific error message if available
+      const specificMessage = err.message ? `: ${err.message}` : '. Please try again.';
+      setError(`Failed to ${status} the request${specificMessage}`);
     } finally {
-        setUpdating(null);
+      setIsUpdating(null);
     }
   };
+  
+  // Determines which requests to display based on the active tab
+  const displayedRequests = activeTab === 'received' ? receivedRequests : sentRequests;
 
-  const requests = useMemo(() => (view === 'sent' ? sentRequests : receivedRequests), [view, sentRequests, receivedRequests]);
-
-  if (loading) {
-    return (
-        <div className="flex justify-center items-center h-screen">
-          <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-indigo-500"></div>
+  // Renders a single request card
+  const renderRequestCard = (request: Request) => (
+    <li key={request.id} className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow space-y-2 transition-transform hover:scale-105">
+        <div className="flex justify-between items-start">
+            <span className="font-semibold text-lg">{activeTab === 'received' ? `${request.fromUserName}` : `${request.toUserName}`}</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+                {new Date(request.createdAt.seconds * 1000).toLocaleDateString()}
+            </span>
         </div>
-      );
-  }
-
-  if (error) {
-    return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>;
-  }
+        <p className="text-gray-700 dark:text-gray-300"><span className="font-semibold">Skill:</span> {request.skill}</p>
+        {request.message && <p className="text-gray-700 dark:text-gray-300 italic">"{request.message}"</p>}
+        <div className="flex items-center justify-between pt-2">
+            <span className={`px-3 py-1 text-xs font-bold rounded-full 
+                ${request.status === 'pending' ? 'bg-yellow-200 text-yellow-800' : 
+                  request.status === 'accepted' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}`}>
+                {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+            </span>
+            {/* Action buttons for pending received requests */}
+            {activeTab === 'received' && request.status === 'pending' && (
+                <div className="flex items-center space-x-2">
+                    <button 
+                        onClick={() => handleAction(request.id, 'accepted')} 
+                        disabled={!!isUpdating}
+                        className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 disabled:bg-gray-400 transition-colors">
+                        {isUpdating === request.id ? 'Accepting...' : 'Accept'}
+                    </button>
+                    <button 
+                        onClick={() => handleAction(request.id, 'rejected')} 
+                        disabled={!!isUpdating}
+                        className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 disabled:bg-gray-400 transition-colors">
+                        {isUpdating === request.id ? 'Rejecting...' : 'Reject'}
+                    </button>
+                </div>
+            )}
+        </div>
+    </li>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 p-8">
-      <div className="container mx-auto">
-        <h1 className="text-3xl font-bold text-center text-blue-600 dark:text-blue-400 mb-8">
-          Mentorship Requests
-        </h1>
-        <div className="flex justify-center mb-6">
-          <button
-            onClick={() => setView('received')}
-            className={`px-4 py-2 rounded-l-lg ${view === 'received' ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700'}`}>
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 p-4 sm:p-6">
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold text-center mb-6 text-indigo-600 dark:text-indigo-400">Mentorship Requests</h1>
+        
+        <div className="flex justify-center border-b border-gray-300 dark:border-gray-700 mb-6">
+          <button onClick={() => setActiveTab('received')} className={`px-6 py-2 font-semibold ${activeTab === 'received' ? 'border-b-2 border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
             Incoming
           </button>
-          <button
-            onClick={() => setView('sent')}
-            className={`px-4 py-2 rounded-r-lg ${view === 'sent' ? 'bg-blue-600 text-white' : 'bg-gray-300 dark:bg-gray-700'}`}>
+          <button onClick={() => setActiveTab('sent')} className={`px-6 py-2 font-semibold ${activeTab === 'sent' ? 'border-b-2 border-indigo-500 text-indigo-600 dark:text-indigo-400' : 'text-gray-500 dark:text-gray-400'}`}>
             Sent
           </button>
         </div>
-        <div className="bg-white dark:bg-gray-800 shadow-md rounded-lg p-6">
-          {requests.length > 0 ? (
-            <ul className="space-y-4">
-              {requests.map(request => (
-                <li key={request.id} className="p-4 bg-gray-50 dark:bg-gray-700 rounded-md shadow-sm">
-                  <p className="text-gray-600 dark:text-gray-300">
-                    {view === 'received' ? `From: ${request.fromUserName}` : `To: ${request.toUserName}`}
-                  </p>
-                  <p className="text-gray-600 dark:text-gray-300">Skill: {request.skill}</p>
-                  <p className="text-gray-600 dark:text-gray-300">Message: {request.message}</p>
-                  <p className="text-gray-600 dark:text-gray-300">Status: {request.status}</p>
-                  {view === 'received' && request.status === 'pending' && (
-                    <div className="mt-4 flex space-x-2">
-                        <button
-                            onClick={() => handleRequestAction(request.id, 'accepted')}
-                            className="px-3 py-1 bg-green-500 text-white rounded-md disabled:opacity-50"
-                            disabled={updating === `${request.id}-accepted`}
-                        >
-                            {updating === `${request.id}-accepted` ? 'Accepting...' : 'Accept'}
-                        </button>
-                        <button
-                            onClick={() => handleRequestAction(request.id, 'rejected')}
-                            className="px-3 py-1 bg-red-500 text-white rounded-md disabled:opacity-50"
-                            disabled={updating === `${request.id}-rejected`}
-                        >
-                            {updating === `${request.id}-rejected` ? 'Rejecting...' : 'Reject'}
-                        </button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-center text-gray-500 dark:text-gray-400">You have no {view} requests.</p>
-          )}
-        </div>
+
+        {loading ? (
+          <div className="text-center py-10">Loading requests...</div>
+        ) : error ? (
+          <div className="text-center py-10 text-red-500">{error}</div>
+        ) : displayedRequests.length === 0 ? (
+          <div className="text-center py-10 text-gray-500 dark:text-gray-400">No {activeTab} requests found.</div>
+        ) : (
+          <ul className="space-y-4">
+            {displayedRequests.map(renderRequestCard)}
+          </ul>
+        )}
       </div>
     </div>
   );
 };
 
-export default Requests;
+export default RequestsPage;

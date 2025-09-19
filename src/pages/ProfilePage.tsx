@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../redux/store';
-import { getUserProfile } from '../services/api';
+import { getUserProfile, sendMentorshipRequest } from '../services/api';
+import { ROUTES } from '../constants/routes';
 
 interface UserProfile {
     uid: string;
@@ -22,62 +23,142 @@ const ProfilePage: React.FC = () => {
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-
-    const fetchProfile = async () => {
-        if (!userId) return;
-
-        try {
-            setLoading(true);
-            const userProfile = await getUserProfile(userId);
-            setProfile(userProfile as UserProfile);
-        } catch (err) {
-            setError('Failed to load user profile.');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const [isOwnProfile, setIsOwnProfile] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [requestStatus, setRequestStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
 
     useEffect(() => {
+        if (currentUser?.uid && userId) {
+            setIsOwnProfile(currentUser.uid === userId);
+        }
+    }, [currentUser, userId]);
+
+    useEffect(() => {
+        const fetchProfile = async () => {
+            if (!userId) return;
+            setLoading(true);
+            try {
+                const userProfile = await getUserProfile(userId);
+                if (userProfile) {
+                    setProfile(userProfile as UserProfile);
+                } else {
+                    setError('User profile not found.');
+                }
+            } catch (err) {
+                setError('Failed to load user profile.');
+            } finally {
+                setLoading(false);
+            }
+        };
         fetchProfile();
     }, [userId]);
 
+    const handleConnectClick = () => {
+        setIsModalOpen(true);
+    };
+
+    const handleSkillSelect = async (skill: string) => {
+        if (!currentUser || !userId) return;
+        setRequestStatus('sending');
+        try {
+            await sendMentorshipRequest(currentUser.uid, userId, skill, `Hi, I'd like to learn ${skill} from you.`);
+            setRequestStatus('sent');
+            setTimeout(() => {
+                setIsModalOpen(false);
+                setRequestStatus('idle');
+            }, 2000); // Close modal after 2 seconds
+        } catch (error) {
+            console.error("Failed to send request:", error);
+            setRequestStatus('idle');
+            alert('Failed to send mentorship request.');
+        }
+    };
+
     if (loading) {
-        return <div className="flex h-full items-center justify-center">Loading profile...</div>;
+        return <div className="flex h-screen items-center justify-center">Loading profile...</div>;
     }
 
-    if (error || !profile) {
-        return <div className="flex h-full items-center justify-center text-red-500">{error || 'Profile not found.'}</div>;
+    if (error) {
+        return <div className="flex h-screen items-center justify-center text-red-500">{error}</div>;
+    }
+
+    if (!profile) {
+        return <div className="flex h-screen items-center justify-center">Profile not available.</div>;
     }
 
     return (
-        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-text-primary dark:text-white p-8">
-            <div className="container mx-auto">
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8">
-                    <div className="flex flex-col items-center md:flex-row md:items-start">
-                        <img src={profile.photoURL || 'https://via.placeholder.com/150'} alt={profile.displayName} className="w-48 h-48 rounded-full mb-6 md:mb-0 md:mr-8" />
-                        <div className="text-center md:text-left">
-                            <h1 className="text-4xl font-bold mb-2">{profile.displayName}</h1>
-                            <p className="text-xl text-gray-600 dark:text-gray-400 mb-4">{profile.title}</p>
-                            <p className="text-md text-gray-500 dark:text-gray-300 my-4">{profile.location}</p>
+        <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-white p-4 sm:p-6 lg:p-8">
+            <div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+                <div className="p-8">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start">
+                        <img src={profile.photoURL || 'https://via.placeholder.com/150'} alt={profile.displayName} className="w-32 h-32 rounded-full mb-4 sm:mb-0 sm:mr-8" />
+                        <div className="text-center sm:text-left">
+                            <h1 className="text-3xl font-bold mb-1">{profile.displayName}</h1>
+                            <p className="text-lg text-gray-600 dark:text-gray-400 mb-2">{profile.title}</p>
+                            <p className="text-md text-gray-500 dark:text-gray-300 mb-4">{profile.location}</p>
                             <span className={`px-3 py-1 text-sm font-semibold rounded-full ${profile.availability === 'Available' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
                                 {profile.availability}
                             </span>
                         </div>
                     </div>
-                    <div className="mt-8">
+                    
+                    <div className="mt-6 text-center sm:text-right">
+                        {isOwnProfile ? (
+                            <Link to={ROUTES.EDIT_PROFILE} className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg">
+                                Edit Profile
+                            </Link>
+                        ) : (
+                            <button onClick={handleConnectClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">
+                                Connect Me
+                            </button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="px-8 py-6 border-t border-gray-200 dark:border-gray-700">
+                    <div>
                         <h2 className="text-2xl font-bold mb-4">About Me</h2>
-                        <p className="text-lg text-gray-700 dark:text-gray-300">{profile.bio}</p>
+                        <p className="text-lg text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{profile.bio || 'No bio provided.'}</p>
                     </div>
                     <div className="mt-8">
                         <h2 className="text-2xl font-bold mb-4">Skills</h2>
                         <div className="flex flex-wrap gap-2">
-                            {profile.skills.map(skill => (
+                            {profile.skills.length > 0 ? profile.skills.map(skill => (
                                 <span key={skill} className="bg-gray-200 dark:bg-gray-700 px-4 py-2 rounded-full text-md text-gray-800 dark:text-gray-300">{skill}</span>
-                            ))}
+                            )) : <p>No skills listed.</p>}
                         </div>
                     </div>
                 </div>
             </div>
+
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-md">
+                        {requestStatus === 'sent' ? (
+                            <div className="text-center">
+                                <h2 className="text-2xl font-bold mb-4">Request Sent!</h2>
+                                <p>Your mentorship request has been sent to {profile.displayName}.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <h2 className="text-2xl font-bold mb-4">Choose a skill to learn</h2>
+                                <div className="flex flex-wrap gap-2">
+                                    {profile.skills.map(skill => (
+                                        <button 
+                                            key={skill} 
+                                            onClick={() => handleSkillSelect(skill)}
+                                            disabled={requestStatus === 'sending'}
+                                            className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-4 rounded disabled:bg-gray-400">
+                                            {skill}
+                                        </button>
+                                    ))}
+                                </div>
+                                <button onClick={() => setIsModalOpen(false)} className="mt-6 text-sm text-gray-600 dark:text-gray-400 hover:underline">Cancel</button>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -17,10 +17,10 @@ import {
   getDocs,
   query,
   where,
-  arrayUnion,
-  arrayRemove,
   orderBy,
-  runTransaction
+  runTransaction,
+  arrayUnion,
+  arrayRemove
 } from 'firebase/firestore';
 
 // Login function
@@ -79,7 +79,6 @@ export const ensureUserDocument = async (user: User) => {
             skills: [],
             location: '',
             availability: 'Available',
-            connections: [],
             createdAt: serverTimestamp(),
             lastUpdated: serverTimestamp()
         });
@@ -107,7 +106,7 @@ export const getUserProfile = async (userId: string) => {
     if (userDoc.exists()) {
       return { uid: userDoc.id, ...userDoc.data() };
     } else {
-      throw new Error('User profile not found.');
+      return null;
     }
   } catch (error) {
     console.error('Error fetching user profile:', error);
@@ -153,69 +152,66 @@ export const getRequests = async (userId: string, type: 'sent' | 'received') => 
 
 // Function to update the status of a mentorship request
 export const updateRequestStatus = async (requestId: string, newStatus: 'accepted' | 'rejected') => {
+    const requestRef = doc(db, 'mentorship_requests', requestId);
+
+    if (newStatus === 'rejected') {
+        await updateDoc(requestRef, { status: newStatus, updatedAt: serverTimestamp() });
+        return null;
+    }
+
+    // Handle accepted requests
     try {
-        let conversationId: string | null = null;
-
-        await runTransaction(db, async (transaction) => {
-            const requestRef = doc(db, 'mentorship_requests', requestId);
+        // Use a transaction to ensure atomicity
+        const conversationId = await runTransaction(db, async (transaction) => {
             const requestSnap = await transaction.get(requestRef);
-
             if (!requestSnap.exists()) {
-                throw new Error("Request not found. It may have been deleted.");
+                throw new Error("Request not found.");
             }
+            const requestData = requestSnap.data();
+            const { fromUserId, toUserId, skill } = requestData;
 
-            if (newStatus === 'accepted') {
-                const requestData = requestSnap.data();
-                const fromUserRef = doc(db, 'users', requestData.fromUserId);
-                const toUserRef = doc(db, 'users', requestData.toUserId);
+            // Create a deterministic conversation ID
+            const convId = [fromUserId, toUserId].sort().join('_');
+            const conversationRef = doc(db, 'conversations', convId);
 
-                const fromUserSnap = await transaction.get(fromUserRef);
-                const toUserSnap = await transaction.get(toUserRef);
+            const conversationSnap = await transaction.get(conversationRef);
 
-                if (!fromUserSnap.exists() || !toUserSnap.exists()) {
-                    throw new Error("One or both users in the request no longer exist.");
-                }
-
-                transaction.update(fromUserRef, { connections: arrayUnion(requestData.toUserId) });
-                transaction.update(toUserRef, { connections: arrayUnion(requestData.fromUserId) });
-
-                const conversationsRef = collection(db, 'conversations');
-                const q = query(conversationsRef, where('participants', 'in', [[requestData.fromUserId, requestData.toUserId], [requestData.toUserId, requestData.fromUserId]]));
-                
-                const querySnapshot = await getDocs(q);
-
-                if (!querySnapshot.empty) {
-                    conversationId = querySnapshot.docs[0].id;
-                } else {
-                    const conversationRef = doc(collection(db, 'conversations'));
-                    transaction.set(conversationRef, {
-                        id: conversationRef.id,
-                        participants: [requestData.fromUserId, requestData.toUserId],
-                        createdAt: serverTimestamp(),
-                        lastMessage: null,
-                        lastMessageTimestamp: null
-                    });
-                    conversationId = conversationRef.id;
-                }
-
-                const messagesCol = collection(db, `conversations/${conversationId}/messages`);
-                const messageRef = doc(messagesCol);
-                transaction.set(messageRef, {
-                    senderId: requestData.fromUserId,
-                    text: `Hi! I've accepted your mentorship request for ${requestData.skill}.`,
-                    timestamp: serverTimestamp()
+            if (!conversationSnap.exists()) {
+                // If conversation doesn't exist, create it
+                transaction.set(conversationRef, {
+                    id: convId,
+                    participants: [fromUserId, toUserId].sort(), // Store sorted participants
+                    createdAt: serverTimestamp(),
+                    lastMessage: null,
+                    lastMessageTimestamp: null,
                 });
             }
 
-            transaction.update(requestRef, {
-                status: newStatus,
-                updatedAt: new Date()
-            });
+            // Update request status to accepted
+            transaction.update(requestRef, { status: 'accepted', updatedAt: serverTimestamp() });
+
+            // Add a welcome message to the chat. This message should always be added.
+            // const messageRef = doc(collection(db, `conversations/${convId}/messages`));
+            // const welcomeMessage = `Hi! I've accepted your mentorship request for ${skill}. I'm happy to help.`;
+            // transaction.set(messageRef, {
+            //     senderId: toUserId, // The user who accepted the request
+            //     text: welcomeMessage,
+            //     timestamp: serverTimestamp(),
+            // });
+
+            // // Update the last message on the conversation
+            // transaction.update(conversationRef, {
+            //      lastMessage: welcomeMessage,
+            //      lastMessageTimestamp: serverTimestamp(),
+            // });
+
+            return convId;
         });
 
         return conversationId;
+
     } catch (error) {
-        console.error("Error updating request status:", error);
+        console.error("Error accepting request:", error);
         throw error;
     }
 };
@@ -360,17 +356,13 @@ export const removeUserSkill = async (userId: string, skill: string) => {
 
 export const getConnections = async (userId: string) => {
     try {
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
-        if (userDoc.exists()) {
-            const userData = userDoc.data();
-            const connectionIds = userData.connections || [];
-            const connectionProfiles = await Promise.all(
-                connectionIds.map((id: string) => getUserProfile(id))
-            );
-            return connectionProfiles;
-        }
-        return [];
+        const connectionsCol = collection(db, 'users', userId, 'connections');
+        const connectionsSnap = await getDocs(connectionsCol);
+        const connectionIds = connectionsSnap.docs.map(doc => doc.id);
+        const connectionProfiles = await Promise.all(
+            connectionIds.map((id: string) => getUserProfile(id))
+        );
+        return connectionProfiles.filter(p => p !== null);
     } catch (error) {
         console.error('Error fetching connections:', error);
         throw error;
