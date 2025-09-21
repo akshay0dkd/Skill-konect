@@ -12,6 +12,9 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Log the project ID to the console
+console.log("Attempting to connect to Firebase project:", firebaseConfig.projectId);
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);

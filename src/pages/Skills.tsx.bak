@@ -48,7 +48,7 @@ const Skills: React.FC = () => {
 
       if (newConversation) {
         // Send an initial message
-        const message = `I'd like to learn ${skill.name} from you.`;
+        const message = `Hi ${skill.userName}, I'd like to learn more about ${skill.name}.`;
         await sendMessage(newConversation.id, currentUser.uid, message);
 
         // You might want to navigate to the messages page or show a confirmation

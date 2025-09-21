@@ -1,14 +1,27 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import { RootState } from '../redux/store';
 
 const Home: React.FC = () => {
+  const isAuthenticated = useSelector((state: RootState) => state.auth.isAuthenticated);
+  const navigate = useNavigate();
+
+  const handleExploreClick = () => {
+    if (isAuthenticated) {
+      navigate('/dashboard');
+    } else {
+      navigate('/login');
+    }
+  };
+
   return (
     <div className="bg-gray-100 font-sans">
       {/* Hero Section */}
       <header className="bg-gradient-to-r from-primary to-blue-500 text-white text-center p-8 md:p-16">
         <h1 className="text-4xl md:text-6xl font-bold mb-4">Welcome to Skill Konect</h1>
         <p className="text-lg md:text-xl mb-8">The platform where you can connect with professionals, learn new skills, and mentor others.</p>
-        <Link to="/skills" className="bg-white text-primary font-bold py-2 px-6 rounded-full hover:bg-gray-200 transition duration-300">Explore Skills</Link>
+        <button onClick={handleExploreClick} className="bg-white text-primary font-bold py-2 px-6 rounded-full hover:bg-gray-200 transition duration-300">Explore Skills</button>
       </header>
 
       {/* Features Section */}

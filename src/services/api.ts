@@ -115,6 +115,16 @@ export const getUserProfile = async (userId: string) => {
   }
 };
 
+// Function to fetch all users
+export const getAllUsers = async (currentUserId?: string) => {
+    const usersRef = collection(db, 'users');
+    const querySnapshot = await getDocs(usersRef);
+    const users = querySnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(user => user.id !== currentUserId);
+    return users;
+};
+
 
 // Function to fetch users by a specific skill
 export const getUsersBySkill = async (skill: string) => {
@@ -326,6 +336,22 @@ export const getConnections = async (userId: string) => {
     }
 };
 
+export const startConversation = async (currentUserId: string, otherUserId: string) => {
+  const conversationId = [currentUserId, otherUserId].sort().join('_');
+  const conversationRef = doc(db, 'conversations', conversationId);
+  const conversationDoc = await getDoc(conversationRef);
+
+  if (!conversationDoc.exists()) {
+    await setDoc(conversationRef, {
+      participants: [currentUserId, otherUserId],
+      createdAt: serverTimestamp(),
+      lastMessage: '',
+      lastMessageTimestamp: serverTimestamp()
+    });
+  }
+  return conversationId;
+};
+
 export const createTask = async (assignedBy: string, assignedTo: string, taskName: string, taskDescription: string, conversationId: string) => {
     await addDoc(collection(db, 'tasks'), {
         assignedBy,
@@ -352,4 +378,50 @@ export const updateTaskStatus = async (taskId: string, status: string, completed
         status,
         completed,
     });
+};
+
+// Function to rate a user (CLIENT-SIDE IMPLEMENTATION)
+export const rateUser = async (ratedUserId: string, raterUserId: string, rating: number) => {
+  if (ratedUserId === raterUserId) {
+    throw new Error("You cannot rate yourself.");
+  }
+
+  const ratedUserRef = doc(db, "users", ratedUserId);
+  const ratingRef = doc(ratedUserRef, "ratings", raterUserId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const ratedUserDoc = await transaction.get(ratedUserRef);
+      if (!ratedUserDoc.exists()) {
+        throw new Error("User not found.");
+      }
+
+      const userData = ratedUserDoc.data();
+      const oldRatingDoc = await transaction.get(ratingRef);
+
+      let newRatingCount = (userData.ratingCount || 0) + 1;
+      let newTotalRating = (userData.totalRating || 0) + rating;
+
+      if (oldRatingDoc.exists()) {
+        const oldRatingData = oldRatingDoc.data();
+        newRatingCount -= 1; // It's an update, not a new rating
+        newTotalRating -= oldRatingData.rating; // Remove the old rating value
+      }
+
+      const newAverageRating = newTotalRating / newRatingCount;
+
+      transaction.update(ratedUserRef, {
+        averageRating: newAverageRating,
+        ratingCount: newRatingCount,
+        totalRating: newTotalRating
+      });
+
+      transaction.set(ratingRef, { rating: rating });
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error rating user:", error);
+    throw error;
+  }
 };

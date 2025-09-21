@@ -1,0 +1,45 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isParticipant(conversationId) {
+      let doc = get(/databases/$(database)/documents/conversations/$(conversationId));
+      return doc.exists && request.auth.uid in doc.data.participants;
+    }
+
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth.uid == userId;
+      allow update: if request.auth != null;
+      allow delete: if request.auth.uid == userId;
+    }
+
+    match /mentorship_requests/{requestId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth.uid == resource.data.fromUserId || request.auth.uid == resource.data.toUserId;
+      allow update: if request.auth.uid == resource.data.toUserId || request.auth.uid == resource.data.fromUserId;
+    }
+
+    match /conversations/{conversationId} {
+      allow create: if request.auth != null;
+      allow read, update: if isParticipant(conversationId);
+
+      match /messages/{messageId} {
+        allow read: if isParticipant(conversationId);
+        allow create: if isParticipant(conversationId) && request.auth.uid == request.resource.data.senderId;
+      }
+    }
+
+    match /skills/{skillId} {
+        allow read: if request.auth != null;
+    }
+
+    match /authErrors/{errorId} {
+        allow create: if true;
+    }
+
+    match /tasks/{taskId} {
+      allow read, create, update: if request.auth != null;
+    }
+  }
+}

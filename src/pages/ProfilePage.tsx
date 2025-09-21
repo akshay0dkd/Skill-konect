@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import { RootState } from '../redux/store';
-import { getUserProfile, sendMentorshipRequest } from '../services/api';
+import { getUserProfile, sendMentorshipRequest, startConversation, rateUser } from '../services/api';
 import { ROUTES } from '../constants/routes';
+import Rating from '../components/Rating';
 
 interface UserProfile {
     uid: string;
@@ -15,17 +16,21 @@ interface UserProfile {
     skills: string[];
     location: string;
     availability: string;
+    averageRating?: number;
+    ratingCount?: number;
 }
 
 const ProfilePage: React.FC = () => {
     const { userId } = useParams<{ userId: string }>();
     const { user: currentUser } = useSelector((state: RootState) => state.auth);
+    const navigate = useNavigate();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isOwnProfile, setIsOwnProfile] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [requestStatus, setRequestStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+    const [userRating, setUserRating] = useState(0);
 
     useEffect(() => {
         if (currentUser?.uid && userId) {
@@ -33,28 +38,40 @@ const ProfilePage: React.FC = () => {
         }
     }, [currentUser, userId]);
 
-    useEffect(() => {
-        const fetchProfile = async () => {
-            if (!userId) return;
-            setLoading(true);
-            try {
-                const userProfile = await getUserProfile(userId);
-                if (userProfile) {
-                    setProfile(userProfile as UserProfile);
-                } else {
-                    setError('User profile not found.');
-                }
-            } catch (err) {
-                setError('Failed to load user profile.');
-            } finally {
-                setLoading(false);
+    const fetchProfile = async () => {
+        if (!userId) return;
+        setLoading(true);
+        try {
+            const userProfile = await getUserProfile(userId);
+            if (userProfile) {
+                setProfile(userProfile as UserProfile);
+            } else {
+                setError('User profile not found.');
             }
-        };
+        } catch (err) {
+            setError('Failed to load user profile.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
         fetchProfile();
     }, [userId]);
 
     const handleConnectClick = () => {
         setIsModalOpen(true);
+    };
+
+    const handleMessageClick = async () => {
+        if (!currentUser || !userId) return;
+        try {
+            const conversationId = await startConversation(currentUser.uid, userId);
+            navigate(ROUTES.MESSAGES);
+        } catch (error) {
+            console.error("Failed to start conversation:", error);
+            alert('Failed to start a conversation.');
+        }
     };
 
     const handleSkillSelect = async (skill: string) => {
@@ -71,6 +88,23 @@ const ProfilePage: React.FC = () => {
             console.error("Failed to send request:", error);
             setRequestStatus('idle');
             alert('Failed to send mentorship request.');
+        }
+    };
+
+    const handleRatingChange = (newRating: number) => {
+        setUserRating(newRating);
+    };
+
+    const handleRateUser = async () => {
+        if (!currentUser || !userId || userRating === 0) return;
+        try {
+            await rateUser(userId, currentUser.uid, userRating);
+            alert('Rating submitted successfully!');
+            // Refresh profile to show new average rating
+            fetchProfile();
+        } catch (error) {
+            console.error("Failed to submit rating:", error);
+            alert('Failed to submit rating.');
         }
     };
 
@@ -95,6 +129,10 @@ const ProfilePage: React.FC = () => {
                         <div className="text-center sm:text-left">
                             <h1 className="text-3xl font-bold mb-1">{profile.displayName}</h1>
                             <p className="text-lg text-gray-600 dark:text-gray-400 mb-2">{profile.title}</p>
+                            <div className="flex items-center justify-center sm:justify-start mb-2">
+                                <Rating initialRating={profile.averageRating || 0} readOnly />
+                                <span className="ml-2 text-gray-600 dark:text-gray-400">({profile.ratingCount || 0} ratings)</span>
+                            </div>
                             <p className="text-md text-gray-500 dark:text-gray-300 mb-4">{profile.location}</p>
                             <span className={`px-3 py-1 text-sm font-semibold rounded-full ${profile.availability === 'Available' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
                                 {profile.availability}
@@ -108,9 +146,14 @@ const ProfilePage: React.FC = () => {
                                 Edit Profile
                             </Link>
                         ) : (
-                            <button onClick={handleConnectClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">
-                                Connect Me
-                            </button>
+                            <>
+                                <button onClick={handleConnectClick} className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">
+                                    Connect Me
+                                </button>
+                                <button onClick={handleMessageClick} className="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg ml-4">
+                                    Message
+                                </button>
+                            </>
                         )}
                     </div>
                 </div>
@@ -128,6 +171,20 @@ const ProfilePage: React.FC = () => {
                             )) : <p>No skills listed.</p>}
                         </div>
                     </div>
+
+                    {!isOwnProfile && (
+                        <div className="mt-8">
+                            <h2 className="text-2xl font-bold mb-4">Rate {profile.displayName}</h2>
+                            <Rating onRatingChange={handleRatingChange} />
+                            <button 
+                                onClick={handleRateUser}
+                                disabled={userRating === 0}
+                                className="mt-4 bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-400"
+                            >
+                                Submit Rating
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 

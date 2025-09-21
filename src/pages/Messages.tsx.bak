@@ -37,26 +37,28 @@ const Messages: React.FC = () => {
 
   useEffect(() => {
     if (!currentUser?.uid) return;
-
+  
     const conversationsRef = collection(db, 'conversations');
     const q = query(conversationsRef, where('participants', 'array-contains', currentUser.uid));
-
+  
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       setLoadingConversations(true);
       try {
-        const convos = await getConversations(currentUser.uid);
-        setConversations(convos as Conversation[]);
-
-        // If there's a selected conversation, update its data
+        const convos = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as Conversation));
+        
+        // This is a simplified approach. You might need to fetch user details for each convo
+        // if they are not stored directly in the conversation document.
+        setConversations(convos);
+  
         if (selectedConversation) {
             const updatedConvo = convos.find(c => c.id === selectedConversation.id);
             if (updatedConvo) {
                 setSelectedConversation(updatedConvo);
             }
         }
-
+  
       } catch (err) {
-        console.error("Error fetching conversations: ", err);
+        console.error("Error processing conversations snapshot: ", err);
         setError("Failed to load conversations.");
       } finally {
         setLoadingConversations(false);
@@ -65,9 +67,9 @@ const Messages: React.FC = () => {
         console.error("Snapshot error: ", err);
         setError("Failed to listen for conversation updates.");
     });
-
+  
     return () => unsubscribe();
-  }, [currentUser?.uid, selectedConversation?.id]); // Added selectedConversation.id to dependencies
+  }, [currentUser?.uid, selectedConversation?.id]);
 
   useEffect(() => {
     if (selectedConversation) {
@@ -109,10 +111,9 @@ const Messages: React.FC = () => {
   const handleCloseNewChatModal = (newConversation?: Conversation) => {
     setIsNewChatModalOpen(false);
     if (newConversation) {
-      const existingConvo = conversations.find(c => c.id === newConversation.id);
-      if (!existingConvo) {
+        // The onSnapshot listener will automatically add the new conversation.
+        // We just need to select it to show the chat window.
         setSelectedConversation(newConversation);
-      }
     }
   }
 
