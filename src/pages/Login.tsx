@@ -61,7 +61,7 @@ const Login: React.FC = () => {
         
         <form className="space-y-6" onSubmit={handleLogin}>
           <div className="relative">
-            <label> Email Address</label>
+            <label className='text-white'> Email Address</label>
             <input
               id="email"
               type="email"
@@ -80,7 +80,7 @@ const Login: React.FC = () => {
             </label>
           </div>
           <div className="relative">
-                <label>Password</label> 
+                <label className='text-white'>Password</label> 
             <input
               id="password"
               type="password"
