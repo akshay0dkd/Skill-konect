@@ -61,6 +61,7 @@ const Login: React.FC = () => {
         
         <form className="space-y-6" onSubmit={handleLogin}>
           <div className="relative">
+            <label> Email Address</label>
             <input
               id="email"
               type="email"
@@ -75,10 +76,11 @@ const Login: React.FC = () => {
               htmlFor="email" 
               className="absolute left-4 top-3 text-gray-500 dark:text-gray-400 transition-all duration-300 peer-placeholder-shown:top-3 peer-placeholder-shown:text-base peer-focus:-top-6 peer-focus:text-sm peer-focus:text-indigo-500"
             >
-              Email Address
+
             </label>
           </div>
           <div className="relative">
+                <label>Password</label> 
             <input
               id="password"
               type="password"
@@ -93,7 +95,7 @@ const Login: React.FC = () => {
               htmlFor="password" 
               className="absolute left-4 top-3 text-gray-500 dark:text-gray-400 transition-all duration-300 peer-placeholder-shown:top-3 peer-placeholder-shown:text-base peer-focus:-top-6 peer-focus:text-sm peer-focus:text-indigo-500"
             >
-              Password
+         
             </label>
           </div>
           <div className="text-right">
